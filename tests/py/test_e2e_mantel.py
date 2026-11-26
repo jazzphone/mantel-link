@@ -1,5 +1,5 @@
 """Mantel Link END TO END, in one process: this integration (Home Assistant's
-test harness) linked to Mantel's REAL linked endpoint (mantel_server/linked.py,
+test harness) linked to Mantel's REAL linked endpoint (mantel_server/linked/__init__.py,
 its in-memory handler, a real Service account), over a real local socket, with
 protocol 2: the hello names the Mantel, the report reaches Mantel, entities
 mirror with HK Frontend's unique ids, and set_black_screen's `confirmed`
@@ -30,7 +30,7 @@ for _p in (os.path.join(_ROOT, "hosts", "server"), _ROOT):
         sys.path.append(_p)
 
 from mantel_server import linked as mantel_linked  # noqa: E402
-from mantel_server import service_accounts  # noqa: E402
+from mantel_server.identity import service_accounts  # noqa: E402
 
 SLEEP_UID = BLACK_UID.replace("black_screen", "sleep_screen")
 INSTANCE = "fedcba9876543210fedcba9876543210"
@@ -101,7 +101,7 @@ async def test_paired_by_code_against_the_real_mantel(hass, socket_enabled):
     """An Owner's code from Mantel's real linked_pairing.py, typed into Mantel Link's form: traded once, Mantel's
     proof checked, the credential opens the link."""
     from homeassistant import config_entries
-    from mantel_server import linked_pairing
+    from mantel_server.linked import linked_pairing
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
     service_accounts.ensure_schema(conn)

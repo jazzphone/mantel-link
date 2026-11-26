@@ -11,14 +11,16 @@ from typing import Any
 from homeassistant.components.alarm_control_panel import (
     AlarmControlPanelEntity, AlarmControlPanelEntityFeature, AlarmControlPanelState, CodeFormat,
 )
-from homeassistant.components.binary_sensor import BinarySensorEntity
+from homeassistant.components.binary_sensor import BinarySensorDeviceClass, BinarySensorEntity
+from homeassistant.components.button import ButtonEntity
 from homeassistant.components.camera import Camera, CameraEntityFeature
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.core import callback
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.event import async_call_later
+from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN, HK_DOMAIN
 from .hk_core.link.linked_reserved import _RESERVED  # shared with HK Frontend
@@ -125,7 +127,15 @@ class LinkedSensor(LinkedEntity, SensorEntity):
     linked_platform = "sensor"
 
     @property
+    def device_class(self) -> SensorDeviceClass | None:
+        """`features.device_class` (2026-11-12): `timestamp` for a HomePod's next alarm (Mantel's phase 28), whose state
+        is an ISO time; anything else, none. (In `features`, which every linked side already carries as it is.)"""
+        return SensorDeviceClass.TIMESTAMP if self._features.get("device_class") == "timestamp" else None
+
+    @property
     def native_value(self) -> Any:
+        if self.device_class is SensorDeviceClass.TIMESTAMP:
+            return dt_util.parse_datetime(self._state) if isinstance(self._state, str) else None
         return self._state
 
     @property
@@ -134,9 +144,17 @@ class LinkedSensor(LinkedEntity, SensorEntity):
 
 
 class LinkedBinarySensor(LinkedEntity, BinarySensorEntity):
-    """binary_sensor.<tablet>_screen_in_use."""
+    """binary_sensor.<tablet>_screen_in_use; the Apple TVs' motion sensor (phase 31)."""
 
     linked_platform = "binary_sensor"
+
+    @property
+    def device_class(self) -> BinarySensorDeviceClass | None:
+        """`features.device_class` (phase 31): `motion` for the sensor HomeKit links to the Apple TVs' camera."""
+        try:
+            return BinarySensorDeviceClass(self._features.get("device_class"))
+        except ValueError:
+            return None
 
     @property
     def is_on(self) -> bool:
@@ -147,7 +165,10 @@ class LinkedCamera(LinkedEntity, Camera):
     """Live TV's channels. A channel Mantel names in `features.tv` streams
     through Mantel Link's own transcode (tv.py, this machine) and its still
     is the programme's artwork (never a frame: that would take a tuner);
-    otherwise the stream Mantel names, no still of its own."""
+    otherwise the stream Mantel names, no still of its own. A camera with
+    `features.still` (phase 31: the Apple TVs' camera) is a picture Mantel
+    draws, asked for over the link and kept until its `still` attribute (a
+    version) changes."""
 
     linked_platform = "camera"
 
@@ -158,6 +179,8 @@ class LinkedCamera(LinkedEntity, Camera):
         self._art: bytes | None = None
         self._picked: tuple[Any, ...] | None = None
         self._repicking: Any = None
+        self._still_version: Any = None
+        self._still_bytes: bytes | None = None
 
     @property
     def supported_features(self) -> CameraEntityFeature:
@@ -212,6 +235,8 @@ class LinkedCamera(LinkedEntity, Camera):
         return self._source()
 
     async def async_camera_image(self, width: int | None = None, height: int | None = None) -> bytes | None:
+        if self._features.get("still"):
+            return await self._still()
         tv = self._tv()
         url = tv["image"] if tv else None
         if not url:
@@ -227,6 +252,17 @@ class LinkedCamera(LinkedEntity, Camera):
             except Exception:  # noqa: BLE001 -- no artwork: no picture
                 return None
         return self._art
+
+    async def _still(self) -> bytes | None:
+        """Mantel's picture: asked for again only when its version changed (HomeKit asks on every alert)."""
+        want = (self._desc.get("attributes") or {}).get("still")
+        if self._still_bytes is None or want != self._still_version:
+            got = await self._linked.camera_image(self.unique_id)
+            if got is None:
+                return None                       # no picture rather than the last alert's under this one
+            self._still_version, self._still_bytes = got
+        return self._still_bytes
+
 
 
 class LinkedAlarmPanel(LinkedEntity, AlarmControlPanelEntity):
@@ -286,7 +322,24 @@ class LinkedAlarmPanel(LinkedEntity, AlarmControlPanelEntity):
         await self._linked.command(self, "alarm_trigger", code)
 
 
+class LinkedButton(LinkedEntity, ButtonEntity):
+    """Live TV's buttons for Apple's Home app ("NBC on Den HomeView", "Stop Live TV on Den HomeView"): a press goes to
+    Mantel, which plays the channel on the AirPlay screen (or stops it). Home Assistant keeps the button's state (when it
+    was last pressed) itself; Mantel's descriptor carries none."""
+
+    linked_platform = "button"
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        hk = getattr(self._linked, "homekit_tv", None)
+        if hk is not None:
+            hk.changed()                    # in the registry now: the Live TV bridge can include it
+
+    async def async_press(self) -> None:
+        await self._linked.command(self, "press")
+
+
 CLASSES: dict[str, type[LinkedEntity]] = {
     "switch": LinkedSwitch, "sensor": LinkedSensor, "binary_sensor": LinkedBinarySensor,
-    "camera": LinkedCamera, "alarm_control_panel": LinkedAlarmPanel,
+    "camera": LinkedCamera, "alarm_control_panel": LinkedAlarmPanel, "button": LinkedButton,
 }

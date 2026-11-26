@@ -5,6 +5,19 @@ Mantel Link's releases, newest first. A GitHub release's notes are its section h
 
 ## Unreleased
 
+## 0.1.16 - 2026-11-25
+
+**Added**
+- **Live TV buttons in Apple's Home app** (Mantel's phase 35): a `button` for each Live TV button Mantel sets up (Mantel Settings → Live TV → Home App: a channel on a paired AirPlay screen, "NBC on Den HomeView"), and each screen's Stop button for automations. Pressing one has Mantel play that channel on that screen. Mantel Link keeps a HomeKit Bridge entry of their own, **"Mantel Live TV"** (bridge mode, beside "Mantel Alerts"), holding the channel buttons only, so the Home app shows each as a switch; Mantel Settings shows its code to add it once. The entry follows Mantel's list (updated and reloaded when it changes, keeping its pairing). No other HomeKit entry is touched.
+- **`mantel.live_tv_play`** `{channel, screen}` and **`mantel.live_tv_stop`** `{screen}` for scripts and automations: Mantel plays only what one of its Live TV buttons plays.
+- Needs the Mantel of 2026-11-25 or newer for the buttons; an older Mantel sends none.
+
+## 0.1.15 - 2026-11-14
+
+**Added**
+- **Notifications on the Apple TVs** (Mantel's phase 31): Mantel's Apple TV camera (`camera.mantel_alerts`, its picture drawn by Mantel and fetched over the link only when it changes) and its motion sensor (`binary_sensor.mantel_alerts`, a motion sensor now that Mantel says so). Mantel Settings → Apple TV → Add to HomeKit makes Home Assistant's HomeKit Bridge entry for the camera (accessory mode, "Mantel Alerts", the sensor as its motion sensor) and tells Mantel the code to scan and when it is paired; Remove from HomeKit removes that entry. No other HomeKit entry is touched. Until Mantel has it, nothing changes: Mantel Link tells an older Mantel nothing about HomeKit.
+- **Each HomePod's next alarm is a timestamp sensor** (Mantel's phase 28): `sensor.<homepod>_next_alarm` shows as a date and time in Home Assistant, for automations, once Mantel publishes it.
+
 ## 0.1.14 - 2026-11-11
 
 **Internal**
